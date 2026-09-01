@@ -1,29 +1,16 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from src.dependencies import get_current_user
+from src.model import User
+
 
 router = APIRouter()
 
+
 @router.get("/")
-def Home():
+def home(current_user: User = Depends(get_current_user)):
     return {
-        "message":"Expense Tracker is running "
+        "message": "You are authenticated",
+        "user_id": current_user.id,
+        "email": current_user.email,
     }
-
-
-@router.get("/")
-def home():
-    return {"message": "Expense running"}
-
-
-@router.get("/expenses")
-def get_expenses():
-    return {"message": "All expenses"}
-
-
-@router.post("/expenses")
-def create_expense():
-    return {"message": "Expense created"}
-
-
-@router.delete("/expenses/{expense_id}")
-def delete_expense(expense_id: int):
-    return {"message": f"Deleted {expense_id}"}

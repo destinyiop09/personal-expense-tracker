@@ -1,43 +1,60 @@
-from sqlalchemy import Date, Numeric, String, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column 
-from decimal import Decimal 
 from datetime import date
+from decimal import Decimal
 
+from sqlalchemy import Date, ForeignKey, Numeric, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database import Base
 
-class User(Base):
-    __tablename__ = "Users"
 
-    id : Mapped[int] = mapped_column(
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
         primary_key=True,
         index=True
     )
-    Name: Mapped[str] = mapped_column(
-        Sring(100),
+
+    name: Mapped[str] = mapped_column(
+        String(100),
         nullable=False
     )
-    Email: Mapped[str] = mapped_column(
+
+    email: Mapped[str] = mapped_column(
         String(100),
         unique=True,
-        index=True
-        
+        index=True,
+        nullable=False
     )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False
+    )
+
 
 class Transaction(Base):
     __tablename__ = "transactions"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         nullable=False
     )
-    
+
     amount: Mapped[Decimal] = mapped_column(
-    Numeric(10, 2),
-    nullable=False
-)
+        Numeric(10, 2),
+        nullable=False
+    )
+
+    type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
     category: Mapped[str] = mapped_column(
         String(100),
         nullable=False
@@ -47,7 +64,7 @@ class Transaction(Base):
         String(255),
         nullable=True
     )
-
+     
     date: Mapped[date] = mapped_column(
         Date,
         nullable=False

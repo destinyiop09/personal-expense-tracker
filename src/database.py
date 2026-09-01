@@ -12,11 +12,19 @@ engine = create_engine(database_url)
 
 
 local_session = sessionmaker(
-   bind=engine
+    autocommit=False,
+    autoflush=False,
+    bind=engine
 )
 
-base = declarative_base()
 
-# test the connection 
-with engine.connect() as connection:
-    print("Database connection successful!")
+def get_db():
+    db = local_session()
+    try:
+        yield db
+
+    finally:
+        db.close()
+
+Base = declarative_base()
+
