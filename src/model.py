@@ -64,8 +64,27 @@ class Transaction(Base):
         String(255),
         nullable=True
     )
-     
+
     date: Mapped[date] = mapped_column(
         Date,
+        nullable=False
+    )
+
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True
+    )
+
+    type: Mapped[str] = mapped_column(
+        String(20),
         nullable=False
     )

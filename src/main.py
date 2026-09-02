@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+
+
 from src.routes.expenses import router as expenses_route
 from src.routes.auth import router as auth_route
 

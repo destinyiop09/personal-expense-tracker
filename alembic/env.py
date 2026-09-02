@@ -5,7 +5,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-from src.model import Base
+from src.model import Base, User, Transaction, Category
 from alembic import context
 
 load_dotenv()
