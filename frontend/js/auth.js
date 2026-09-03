@@ -1,916 +1,345 @@
 /**
- * ============================================================================
- * auth.js - User Authentication & Session Handler for FinPulse
- * ============================================================================
+ * auth.js - Frontend authentication for FinPulse.
  *
- * Manages user login, registration, session checks, password toggles,
- * and logout. Connects to FastAPI backend auth endpoints when online,
- * with resilient offline client-side user accounts storage.
+ * Authentication is handled ONLY by the FastAPI backend.
+ * User/transaction/category data is never fabricated in the browser.
  */
 
-// Predefined demo accounts
-const DEFAULT_AUTH_USERS = [
-  {
-    name: "Alex Morgan",
-    email: "demo@finpulse.app",
-    password: "password123",
-    registeredAt: "2026-08-15T00:00:00.000Z"
-  },
-  {
-    name: "Jane Doe",
-    email: "jane@example.com",
-    password: "password123",
-    registeredAt: "2026-08-20T00:00:00.000Z"
-  }
-];
+(function () {
+  "use strict";
 
-/**
- * Retrieve registered accounts from localStorage.
- */
-function getRegisteredUsers() {
-  const raw = localStorage.getItem("finpulse_users");
-
-  if (!raw) {
-    const defaults = [...DEFAULT_AUTH_USERS];
-    localStorage.setItem("finpulse_users", JSON.stringify(defaults));
-    return defaults;
+  function clearLegacyDemoData() {
+    // Remove data created by the old demo/offline implementation.
+    [
+      "finpulse_users",
+      "local_transactions",
+      "finpulse-demo-token-alex",
+      "local-user-token"
+    ].forEach(key => localStorage.removeItem(key));
   }
 
-  try {
-    const parsed = JSON.parse(raw);
+  function isLoginPage() {
+    return window.location.pathname.toLowerCase().includes("login.html");
+  }
 
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+  function isRegisterPage() {
+    return window.location.pathname.toLowerCase().includes("register.html");
+  }
+
+  function getUserInitials(name, email) {
+    const cleanName = String(name || "").trim();
+    const cleanEmail = String(email || "").trim();
+
+    if (cleanName) {
+      const parts = cleanName.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      return cleanName.slice(0, 2).toUpperCase();
     }
 
-    const defaults = [...DEFAULT_AUTH_USERS];
-    localStorage.setItem("finpulse_users", JSON.stringify(defaults));
-    return defaults;
-  } catch (error) {
-    const defaults = [...DEFAULT_AUTH_USERS];
-    localStorage.setItem("finpulse_users", JSON.stringify(defaults));
-    return defaults;
-  }
-}
-
-/**
- * Save registered accounts to localStorage.
- */
-function saveRegisteredUsers(users) {
-  localStorage.setItem("finpulse_users", JSON.stringify(users));
-}
-
-/**
- * Check if the user is currently authenticated.
- */
-function isUserLoggedIn() {
-  const token = localStorage.getItem("token");
-  const email = localStorage.getItem("user_email");
-
-  return Boolean(
-    token &&
-    token.trim().length > 0 &&
-    email &&
-    email.trim().length > 0
-  );
-}
-
-/**
- * Extract 2-letter initials from full name or email.
- */
-function getUserInitials(name, email) {
-  if (name && name.trim()) {
-    const parts = name.trim().split(/\s+/);
-
-    if (parts.length >= 2) {
-      return (
-        parts[0][0] +
-        parts[parts.length - 1][0]
-      ).toUpperCase();
+    if (cleanEmail) {
+      return cleanEmail.split("@")[0].slice(0, 2).toUpperCase();
     }
 
-    return name.trim().slice(0, 2).toUpperCase();
+    return "U";
   }
 
-  if (email && email.trim()) {
-    const prefix = email.split("@")[0];
-    return prefix.slice(0, 2).toUpperCase();
+  function isUserLoggedIn() {
+    const token = getAuthToken();
+    return Boolean(token && token.trim());
   }
 
-  return "FP";
-}
+  function updateHeaderUserDisplay() {
+    const email = String(localStorage.getItem("user_email") || "").trim();
+    const name = String(localStorage.getItem("user_name") || "").trim();
 
-/**
- * Main DOM Content Loaded Listener.
- */
-document.addEventListener("DOMContentLoaded", () => {
-  getRegisteredUsers();
-  setupPasswordToggles();
+    const display = document.getElementById("userEmailDisplay");
+    const avatar = document.getElementById("userAvatar");
 
-  const currentPath = window.location.pathname;
+    // The current backend /auth/login response contains the token only.
+    // Therefore email is the reliable identity value available to the frontend.
+    const label = email || name || "Account";
 
-  const isLoginPage =
-    currentPath.includes("login.html");
+    if (display) {
+      display.textContent = label;
+      display.title = email || label;
+    }
 
-  const isRegisterPage =
-    currentPath.includes("register.html");
-
-  if (isLoginPage) {
-    initLoginPage();
-    return;
+    if (avatar) {
+      avatar.textContent = getUserInitials(name, email);
+      avatar.title = label;
+    }
   }
 
-  if (isRegisterPage) {
-    initRegisterPage();
-    return;
-  }
+  async function validateSession() {
+    if (!isUserLoggedIn()) {
+      return false;
+    }
 
-  initProtectedPage();
-});
-
-/**
- * Password Visibility Toggle Setup.
- */
-function setupPasswordToggles() {
-  const toggleButtons =
-    document.querySelectorAll(".password-toggle-btn");
-
-  toggleButtons.forEach(button => {
-    button.addEventListener("click", () => {
-      const targetId =
-        button.getAttribute("data-target");
-
-      const input =
-        document.getElementById(targetId);
-
-      if (!input) {
-        return;
+    try {
+      // /summary/ is protected by the backend and therefore verifies
+      // that the stored JWT is valid and belongs to an existing DB user.
+      await apiRequest("/summary/", { method: "GET" });
+      return true;
+    } catch (error) {
+      if (error.status === 401) {
+        clearAuthSession();
+        return false;
       }
 
-      const eyeOpen =
-        button.querySelector(".eye-open");
-
-      const eyeClosed =
-        button.querySelector(".eye-closed");
-
-      if (input.type === "password") {
-        input.type = "text";
-
-        if (eyeOpen) {
-          eyeOpen.style.display = "none";
-        }
-
-        if (eyeClosed) {
-          eyeClosed.style.display = "inline";
-        }
-      } else {
-        input.type = "password";
-
-        if (eyeOpen) {
-          eyeOpen.style.display = "inline";
-        }
-
-        if (eyeClosed) {
-          eyeClosed.style.display = "none";
-        }
-      }
-    });
-  });
-}
-
-/**
- * Initialize Login Page.
- */
-function initLoginPage() {
-  const loginForm =
-    document.getElementById("loginForm");
-
-  const demoBtn =
-    document.getElementById("demoLoginBtn");
-
-  const forgotLink =
-    document.getElementById("forgotPasswordLink");
-
-  if (loginForm) {
-    loginForm.addEventListener(
-      "submit",
-      handleLogin
-    );
+      // A network failure is not proof that the token is invalid.
+      return true;
+    }
   }
 
-  if (demoBtn) {
-    demoBtn.addEventListener(
-      "click",
-      () => handleDemoLogin("login")
-    );
-  }
-
-  if (forgotLink) {
-    forgotLink.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-
-        showAlert(
-          "authAlert",
-          "For demo convenience, use demo@finpulse.app / password123 or instant 1-click login.",
-          "info"
-        );
-      }
-    );
-  }
-
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  if (params.get("logout") === "true") {
-    showAlert(
-      "authAlert",
-      "You have been successfully signed out.",
-      "success"
-    );
-  } else if (
-    params.get("registered") === "true"
-  ) {
-    showAlert(
-      "authAlert",
-      "Account registered! You can now sign in with your credentials.",
-      "success"
-    );
-  } else if (
-    params.get("error") === "session_expired"
-  ) {
-    showAlert(
-      "authAlert",
-      "Your session expired. Please sign in again.",
-      "error"
-    );
-  } else if (
-    params.get("auth_required") === "true"
-  ) {
-    showAlert(
-      "authAlert",
-      "Please sign in to access your FinPulse dashboard.",
-      "info"
-    );
-  }
-}
-
-/**
- * Initialize Register Page.
- */
-function initRegisterPage() {
-  const registerForm =
-    document.getElementById("registerForm");
-
-  const demoBtn =
-    document.getElementById("demoRegisterBtn");
-
-  if (registerForm) {
-    registerForm.addEventListener(
-      "submit",
-      handleRegister
-    );
-  }
-
-  if (demoBtn) {
-    demoBtn.addEventListener(
-      "click",
-      () => handleDemoLogin("register")
-    );
-  }
-}
-
-/**
- * Initialize Protected Pages.
- */
-function initProtectedPage() {
-  if (!isUserLoggedIn()) {
-    const wasLoggedOut =
-      sessionStorage.getItem(
-        "finpulse_explicit_logout"
-      );
-
-    if (wasLoggedOut === "true") {
-      window.location.href =
-        "login.html?auth_required=true";
-
+  async function protectPage() {
+    if (isLoginPage() || isRegisterPage()) {
       return;
     }
 
-    setAuthToken("finpulse-demo-token-alex");
+    const valid = await validateSession();
 
-    localStorage.setItem(
-      "user_email",
-      "demo@finpulse.app"
-    );
+    if (!valid) {
+      const target = encodeURIComponent(
+        window.location.pathname.split("/").pop() || "index.html"
+      );
+      window.location.href = `login.html?auth_required=true&next=${target}`;
+      return;
+    }
 
-    localStorage.setItem(
-      "user_name",
-      "Alex Morgan"
-    );
+    updateHeaderUserDisplay();
+
+    document.querySelectorAll("#headerLogoutBtn, #logoutBtn").forEach(button => {
+      button.addEventListener("click", handleLogout);
+    });
   }
 
-  updateHeaderUserDisplay();
+  document.addEventListener("DOMContentLoaded", async () => {
+    clearLegacyDemoData();
+    setupPasswordToggles();
 
-  const logoutButtons = [
-    document.getElementById("headerLogoutBtn"),
-    document.getElementById("logoutBtn")
-  ];
-
-  logoutButtons.forEach(button => {
-    if (button) {
-      button.addEventListener(
-        "click",
-        handleLogout
-      );
+    if (isLoginPage()) {
+      initLoginPage();
+      return;
     }
+
+    if (isRegisterPage()) {
+      initRegisterPage();
+      return;
+    }
+
+    await protectPage();
   });
-}
 
-/**
- * Update user avatar & display name in header.
- */
-function updateHeaderUserDisplay() {
-  const userEmailDisplay =
-    document.getElementById(
-      "userEmailDisplay"
-    );
+  function setupPasswordToggles() {
+    document.querySelectorAll(".password-toggle-btn").forEach(button => {
+      button.addEventListener("click", () => {
+        const input = document.getElementById(button.getAttribute("data-target"));
+        if (!input) return;
 
-  const userAvatar =
-    document.getElementById("userAvatar");
+        const open = button.querySelector(".eye-open");
+        const closed = button.querySelector(".eye-closed");
 
-  const name =
-    localStorage.getItem("user_name") || "";
-
-  const email =
-    localStorage.getItem("user_email") ||
-    "demo@finpulse.app";
-
-  if (userEmailDisplay) {
-    userEmailDisplay.textContent =
-      name || email;
-
-    userEmailDisplay.title =
-      name
-        ? `${name} (${email})`
-        : email;
-  }
-
-  if (userAvatar) {
-    userAvatar.textContent =
-      getUserInitials(name, email);
-
-    userAvatar.title =
-      name || email;
-  }
-}
-
-/**
- * Handles Login Form Submission.
- */
-async function handleLogin(event) {
-  event.preventDefault();
-
-  hideAlert("authAlert");
-
-  const emailInput =
-    document.getElementById("loginEmail");
-
-  const passwordInput =
-    document.getElementById("loginPassword");
-
-  const submitBtn =
-    document.getElementById("loginSubmitBtn");
-
-  const email =
-    (emailInput?.value || "")
-      .trim()
-      .toLowerCase();
-
-  const password =
-    passwordInput?.value || "";
-
-  if (!email || !password) {
-    showAlert(
-      "authAlert",
-      "Please enter both your email address and password.",
-      "error"
-    );
-
-    return;
-  }
-
-  if (submitBtn) {
-    submitBtn.disabled = true;
-
-    submitBtn.innerHTML = `
-      <svg class="animate-spin"
-           width="16"
-           height="16"
-           viewBox="0 0 24 24"
-           fill="none"
-           stroke="currentColor"
-           stroke-width="2">
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          stroke-opacity="0.25">
-        </circle>
-
-        <path
-          d="M12 2a10 10 0 0 1 10 10"
-          stroke-linecap="round">
-        </path>
-      </svg>
-      Signing In...
-    `;
-  }
-
-  try {
-    let authSuccess = false;
-    let userName = "";
-
-    /*
-     * Try FastAPI backend first.
-     */
-    try {
-      const response =
-        await apiRequest("/auth/login", {
-          method: "POST",
-          body: JSON.stringify({
-            email,
-            password
-          })
-        });
-
-      if (
-        response &&
-        (response.access_token ||
-          response.token)
-      ) {
-        setAuthToken(
-          response.access_token ||
-          response.token
-        );
-
-        authSuccess = true;
-
-        userName =
-          response.user?.name ||
-          response.name ||
-          "";
-      }
-    } catch (apiError) {
-      /*
-       * Backend unavailable or rejected.
-       * Continue with local authentication.
-       */
-    }
-
-    /*
-     * Local authentication fallback.
-     */
-    if (!authSuccess) {
-      const users =
-        getRegisteredUsers();
-
-      const matchedUser =
-        users.find(
-          user =>
-            String(user.email || "")
-              .toLowerCase() === email
-        );
-
-      if (matchedUser) {
-        if (
-          matchedUser.password !== password
-        ) {
-          throw new Error(
-            "Incorrect password. Please verify and try again."
-          );
+        if (input.type === "password") {
+          input.type = "text";
+          if (open) open.style.display = "none";
+          if (closed) closed.style.display = "inline";
+        } else {
+          input.type = "password";
+          if (open) open.style.display = "inline";
+          if (closed) closed.style.display = "none";
         }
+      });
+    });
+  }
 
-        authSuccess = true;
-        userName =
-          matchedUser.name || "";
+  function initLoginPage() {
+    const form = document.getElementById("loginForm");
+    if (form) form.addEventListener("submit", handleLogin);
 
-        setAuthToken(
-          "finpulse-token-" +
-          Date.now()
+    const forgotLink = document.getElementById("forgotPasswordLink");
+    if (forgotLink) {
+      forgotLink.addEventListener("click", event => {
+        event.preventDefault();
+        showAlert(
+          "authAlert",
+          "Please use the email and password registered in your account.",
+          "info"
         );
-      } else {
-        throw new Error(
-          "No account registered with this email. Please check your spelling or create an account."
-        );
-      }
+      });
     }
 
-    sessionStorage.removeItem(
-      "finpulse_explicit_logout"
-    );
+    const params = new URLSearchParams(window.location.search);
 
-    localStorage.setItem(
-      "user_email",
-      email
-    );
-
-    if (userName) {
-      localStorage.setItem(
-        "user_name",
-        userName
-      );
-    } else {
-      localStorage.setItem(
-        "user_name",
-        email.split("@")[0]
-      );
+    if (params.get("logout") === "true") {
+      showAlert("authAlert", "You have been successfully signed out.", "success");
+    } else if (params.get("registered") === "true") {
+      showAlert("authAlert", "Account created. Please sign in.", "success");
+    } else if (params.get("session_expired") === "true") {
+      showAlert("authAlert", "Your session expired. Please sign in again.", "error");
+    } else if (params.get("auth_required") === "true") {
+      showAlert("authAlert", "Please sign in to access your FinPulse dashboard.", "info");
     }
+  }
 
-    showAlert(
-      "authAlert",
-      "Signed in successfully! Redirecting to dashboard...",
-      "success"
-    );
+  function initRegisterPage() {
+    const form = document.getElementById("registerForm");
+    if (form) form.addEventListener("submit", handleRegister);
+  }
 
-    setTimeout(() => {
-      window.location.href =
-        "index.html";
-    }, 450);
+  async function handleLogin(event) {
+    event.preventDefault();
+    hideAlert("authAlert");
 
-  } catch (error) {
-    showAlert(
-      "authAlert",
-      error.message ||
-      "Unable to sign in. Please try again.",
-      "error"
-    );
+    const emailInput = document.getElementById("loginEmail");
+    const passwordInput = document.getElementById("loginPassword");
+    const submitBtn = document.getElementById("loginSubmitBtn");
+
+    const email = String(emailInput?.value || "").trim().toLowerCase();
+    const password = String(passwordInput?.value || "");
+
+    if (!email || !password) {
+      showAlert("authAlert", "Please enter both your email address and password.", "error");
+      return;
+    }
 
     if (submitBtn) {
-      submitBtn.disabled = false;
-
-      submitBtn.innerHTML = `
-        <svg width="16"
-             height="16"
-             viewBox="0 0 24 24"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="2"
-             stroke-linecap="round"
-             stroke-linejoin="round">
-
-          <path
-            d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4">
-          </path>
-
-          <polyline
-            points="10 17 15 12 10 7">
-          </polyline>
-
-          <line
-            x1="15"
-            y1="12"
-            x2="3"
-            y2="12">
-          </line>
-        </svg>
-        Sign In
-      `;
-    }
-  }
-}
-
-/**
- * Handles Register Form Submission.
- */
-async function handleRegister(event) {
-  event.preventDefault();
-
-  hideAlert("registerAlert");
-
-  const nameInput =
-    document.getElementById("registerName");
-
-  const emailInput =
-    document.getElementById("registerEmail");
-
-  const passwordInput =
-    document.getElementById(
-      "registerPassword"
-    );
-
-  const confirmPasswordInput =
-    document.getElementById(
-      "registerConfirmPassword"
-    );
-
-  const termsCheckbox =
-    document.getElementById("registerTerms");
-
-  const submitBtn =
-    document.getElementById(
-      "registerSubmitBtn"
-    );
-
-  const name =
-    (nameInput?.value || "").trim();
-
-  const email =
-    (emailInput?.value || "")
-      .trim()
-      .toLowerCase();
-
-  const password =
-    passwordInput?.value || "";
-
-  const confirmPassword =
-    confirmPasswordInput?.value || "";
-
-  if (!name) {
-    showAlert(
-      "registerAlert",
-      "Please enter your full name.",
-      "error"
-    );
-
-    nameInput?.focus();
-    return;
-  }
-
-  if (
-    !email ||
-    !email.includes("@") ||
-    !email.includes(".")
-  ) {
-    showAlert(
-      "registerAlert",
-      "Please enter a valid email address.",
-      "error"
-    );
-
-    emailInput?.focus();
-    return;
-  }
-
-  if (
-    !password ||
-    password.length < 6
-  ) {
-    showAlert(
-      "registerAlert",
-      "Password must be at least 6 characters long.",
-      "error"
-    );
-
-    passwordInput?.focus();
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    showAlert(
-      "registerAlert",
-      "Passwords do not match. Please re-enter your password.",
-      "error"
-    );
-
-    confirmPasswordInput?.focus();
-    return;
-  }
-
-  if (
-    termsCheckbox &&
-    !termsCheckbox.checked
-  ) {
-    showAlert(
-      "registerAlert",
-      "Please accept the terms to create your account.",
-      "error"
-    );
-
-    return;
-  }
-
-  if (submitBtn) {
-    submitBtn.disabled = true;
-
-    submitBtn.innerHTML = `
-      <svg class="animate-spin"
-           width="16"
-           height="16"
-           viewBox="0 0 24 24"
-           fill="none"
-           stroke="currentColor"
-           stroke-width="2">
-
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          stroke-opacity="0.25">
-        </circle>
-
-        <path
-          d="M12 2a10 10 0 0 1 10 10"
-          stroke-linecap="round">
-        </path>
-      </svg>
-      Creating Account...
-    `;
-  }
-
-  try {
-    const users =
-      getRegisteredUsers();
-
-    const existing =
-      users.find(
-        user =>
-          String(user.email || "")
-            .toLowerCase() === email
-      );
-
-    if (existing) {
-      throw new Error(
-        "An account with this email address already exists. Please sign in instead."
-      );
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing In...";
     }
 
-    /*
-     * Try backend registration.
-     */
     try {
-      await apiRequest(
-        "/auth/register",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name,
-            email,
-            password
-          })
-        }
+      const response = await apiRequest("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+
+      const token = response?.access_token || response?.token;
+
+      if (!token) {
+        throw new Error("The server did not return an authentication token.");
+      }
+
+      setAuthToken(token);
+
+      // The current backend returns the token only. Store the authenticated
+      // email for display; all protected financial data comes from PostgreSQL
+      // through the JWT-protected API.
+      localStorage.setItem("user_email", email);
+      localStorage.removeItem("user_name");
+      sessionStorage.removeItem("finpulse_explicit_logout");
+
+      showAlert("authAlert", "Signed in successfully. Redirecting...", "success");
+
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get("next");
+
+      setTimeout(() => {
+        window.location.href = next
+          ? decodeURIComponent(next)
+          : "index.html";
+      }, 300);
+    } catch (error) {
+      clearAuthSession();
+
+      showAlert(
+        "authAlert",
+        error.message || "Unable to sign in. Please check your credentials.",
+        "error"
       );
-    } catch (apiError) {
-      /*
-       * Backend unavailable.
-       * Continue with local registration.
-       */
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Sign In";
+      }
+    }
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    hideAlert("registerAlert");
+
+    const name = String(document.getElementById("registerName")?.value || "").trim();
+    const email = String(document.getElementById("registerEmail")?.value || "").trim().toLowerCase();
+    const password = String(document.getElementById("registerPassword")?.value || "");
+    const confirmPassword = String(
+      document.getElementById("registerConfirmPassword")?.value || ""
+    );
+    const terms = document.getElementById("registerTerms");
+    const submitBtn = document.getElementById("registerSubmitBtn");
+
+    if (!name) {
+      showAlert("registerAlert", "Please enter your full name.", "error");
+      return;
     }
 
-    const newUser = {
-      name,
-      email,
-      password,
-      registeredAt:
-        new Date().toISOString()
-    };
+    if (!email || !email.includes("@")) {
+      showAlert("registerAlert", "Please enter a valid email address.", "error");
+      return;
+    }
 
-    users.push(newUser);
+    if (password.length < 6) {
+      showAlert("registerAlert", "Password must be at least 6 characters long.", "error");
+      return;
+    }
 
-    saveRegisteredUsers(users);
+    if (password !== confirmPassword) {
+      showAlert("registerAlert", "Passwords do not match.", "error");
+      return;
+    }
 
-    /*
-     * Auto-login new account.
-     */
-    sessionStorage.removeItem(
-      "finpulse_explicit_logout"
-    );
-
-    setAuthToken(
-      "finpulse-user-token-" +
-      Date.now()
-    );
-
-    localStorage.setItem(
-      "user_email",
-      email
-    );
-
-    localStorage.setItem(
-      "user_name",
-      name
-    );
-
-    showAlert(
-      "registerAlert",
-      "Account created successfully! Welcome to FinPulse...",
-      "success"
-    );
-
-    setTimeout(() => {
-      window.location.href =
-        "index.html";
-    }, 600);
-
-  } catch (error) {
-    showAlert(
-      "registerAlert",
-      error.message ||
-      "Registration failed. Please try again.",
-      "error"
-    );
+    if (terms && !terms.checked) {
+      showAlert("registerAlert", "Please accept the terms to create your account.", "error");
+      return;
+    }
 
     if (submitBtn) {
-      submitBtn.disabled = false;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Creating Account...";
+    }
 
-      submitBtn.innerHTML = `
-        <svg width="16"
-             height="16"
-             viewBox="0 0 24 24"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="2"
-             stroke-linecap="round"
-             stroke-linejoin="round">
+    try {
+      // Registration is written to PostgreSQL by FastAPI.
+      await apiRequest("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ name, email, password })
+      });
 
-          <path
-            d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2">
-          </path>
+      // Do NOT fabricate a token. The backend registration endpoint does not
+      // return one. Send the user to the real login flow instead.
+      showAlert(
+        "registerAlert",
+        "Account created successfully. Please sign in with your new credentials.",
+        "success"
+      );
 
-          <circle
-            cx="8.5"
-            cy="7.5"
-            r="4">
-          </circle>
+      setTimeout(() => {
+        window.location.href = "login.html?registered=true";
+      }, 500);
+    } catch (error) {
+      showAlert(
+        "registerAlert",
+        error.message || "Registration failed. Please try again.",
+        "error"
+      );
 
-          <polyline
-            points="17 11 19 13 23 9">
-          </polyline>
-        </svg>
-        Create Account & Sign In
-      `;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create Account & Sign In";
+      }
     }
   }
-}
 
-/**
- * Handles 1-Click Instant Demo Login.
- */
-function handleDemoLogin(source = "login") {
-  const alertId =
-    source === "register"
-      ? "registerAlert"
-      : "authAlert";
+  function handleLogout() {
+    clearAuthSession();
+    sessionStorage.setItem("finpulse_explicit_logout", "true");
+    window.location.href = "login.html?logout=true";
+  }
 
-  showAlert(
-    alertId,
-    "Logging in with Demo Account (Alex Morgan)...",
-    "info"
-  );
-
-  sessionStorage.removeItem(
-    "finpulse_explicit_logout"
-  );
-
-  setAuthToken(
-    "finpulse-demo-token-alex"
-  );
-
-  localStorage.setItem(
-    "user_email",
-    "demo@finpulse.app"
-  );
-
-  localStorage.setItem(
-    "user_name",
-    "Alex Morgan"
-  );
-
-  setTimeout(() => {
-    window.location.href =
-      "index.html";
-  }, 400);
-}
-
-/**
- * Handles User Sign Out.
- */
-function handleLogout() {
-  sessionStorage.setItem(
-    "finpulse_explicit_logout",
-    "true"
-  );
-
-  clearAuthSession();
-
-  window.location.href =
-    "login.html?logout=true";
-}
-
-/**
- * Expose useful authentication helpers globally.
- */
-window.isUserLoggedIn =
-  isUserLoggedIn;
-
-window.getUserInitials =
-  getUserInitials;
-
-window.updateHeaderUserDisplay =
-  updateHeaderUserDisplay;
-
-window.handleLogout =
-  handleLogout;
+  window.isUserLoggedIn = isUserLoggedIn;
+  window.getUserInitials = getUserInitials;
+  window.updateHeaderUserDisplay = updateHeaderUserDisplay;
+  window.handleLogout = handleLogout;
+  window.validateSession = validateSession;
+})();

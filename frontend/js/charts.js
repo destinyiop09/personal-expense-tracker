@@ -43,14 +43,7 @@
     name = name.trim();
     email = email.trim();
 
-    /*
-     * Never use a fake fallback such as "Alex Morgan".
-     */
-    if (
-      !name ||
-      name.toLowerCase() === "alex morgan" ||
-      name.toLowerCase() === "alexmorgan"
-    ) {
+    if (!name) {
       name = "";
     }
 

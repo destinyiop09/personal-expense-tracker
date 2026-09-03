@@ -13,34 +13,7 @@ let activeFilters = {
   search: ""
 };
 
-/* ============================================================================
-   FALLBACK CATEGORIES
-   Used only if the backend categories endpoint is unavailable.
-   IDs match the seeded categories in the database.
-   ============================================================================ */
 
-const FALLBACK_CATEGORIES = [
-  // Expense categories
-  { id: 1, name: "Food", type: "expense" },
-  { id: 2, name: "Transport", type: "expense" },
-  { id: 3, name: "Housing", type: "expense" },
-  { id: 4, name: "Bills & Utilities", type: "expense" },
-  { id: 5, name: "Shopping", type: "expense" },
-  { id: 6, name: "Health", type: "expense" },
-  { id: 7, name: "Entertainment", type: "expense" },
-  { id: 8, name: "Education", type: "expense" },
-  { id: 9, name: "Travel", type: "expense" },
-  { id: 10, name: "Other", type: "expense" },
-
-  // Income categories
-  { id: 11, name: "Salary", type: "income" },
-  { id: 12, name: "Freelance", type: "income" },
-  { id: 13, name: "Business", type: "income" },
-  { id: 14, name: "Investment", type: "income" },
-  { id: 15, name: "Bonus", type: "income" },
-  { id: 16, name: "Gift", type: "income" },
-  { id: 17, name: "Other", type: "income" }
-];
 
 /* ============================================================================
    PAGE CHECK
@@ -86,31 +59,21 @@ async function loadCategories() {
     const data = await apiRequest("/categories/", {
       method: "GET"
     });
-
-    if (Array.isArray(data) && data.length > 0) {
+    if (Array.isArray(data)) {
       allCategories = data.map(category => ({
         id: Number(category.id),
-        name: String(category.name || "Other"),
-        type: String(category.type || "expense").toLowerCase()
+        name: String(category.name || ""),
+        type: String(category.type || "").toLowerCase()
       }));
     } else {
-      useFallbackCategories();
+      allCategories = [];
     }
   } catch (error) {
-    console.warn(
-      "Could not load categories from backend. Using local categories.",
-      error
-    );
-
-    useFallbackCategories();
+    console.error("Could not load categories from backend.", error);
+    allCategories = [];
   }
 }
 
-function useFallbackCategories() {
-  allCategories = FALLBACK_CATEGORIES.map(category => ({
-    ...category
-  }));
-}
 
 /* ============================================================================
    CATEGORY HELPERS
