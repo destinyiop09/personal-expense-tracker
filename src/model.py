@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String
+from sqlalchemy import Date, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database import Base
@@ -55,8 +55,8 @@ class Transaction(Base):
         nullable=False
     )
 
-    category: Mapped[str] = mapped_column(
-        String(100),
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"),
         nullable=False
     )
 
@@ -80,11 +80,14 @@ class Category(Base):
 
     name: Mapped[str] = mapped_column(
         String(100),
-        nullable=False,
-        unique=True
+        nullable=False
     )
 
     type: Mapped[str] = mapped_column(
         String(20),
         nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("name", "type", name="uq_category_name_type"),
     )

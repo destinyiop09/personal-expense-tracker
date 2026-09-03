@@ -1,0 +1,6 @@
+{
+  "name": "FinPulse - Smart Expense Tracker",
+  "description": "A sleek, responsive personal finance and expense management dashboard featuring secure user login and registration, interactive category pie charts, cash flow graphs, and monthly budget tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

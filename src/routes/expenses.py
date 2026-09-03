@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.dependencies import get_current_user
-from src.model import Transaction, User
+from src.model import Category, Transaction, User
 from src.schema import TransactionCreate, TransactionUpdate, TransactionType
 
 
@@ -15,16 +15,23 @@ router = APIRouter(
 
 @router.get("/")
 def get_transactions(
+    type: TransactionType | None = None,
+    category_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    transactions = (
+    query = (
         db.query(Transaction)
         .filter(Transaction.user_id == current_user.id)
-        .all()
     )
 
-    return transactions
+    if type is not None:
+        query = query.filter(Transaction.type == type.value)
+
+    if category_id is not None:
+        query = query.filter(Transaction.category_id == category_id)
+
+    return query.all()
 
 
 @router.get("/{transaction_id}")
@@ -57,11 +64,29 @@ def create_transaction(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    category = (
+        db.query(Category)
+        .filter(Category.id == transaction_data.category_id)
+        .first()
+    )
+
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found",
+        )
+
+    if category.type != transaction_data.type.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Category does not match transaction type",
+        )
+
     transaction = Transaction(
         user_id=current_user.id,
         amount=transaction_data.amount,
-        type=transaction_data.type,
-        category=transaction_data.category,
+        type=transaction_data.type.value,
+        category_id=transaction_data.category_id,
         description=transaction_data.description,
         date=transaction_data.date,
     )
@@ -95,14 +120,38 @@ def update_transaction(
             detail="Transaction not found",
         )
 
+    new_type = (
+        transaction_data.type.value
+        if transaction_data.type is not None
+        else transaction.type
+    )
+
+    if transaction_data.category_id is not None:
+        category = (
+            db.query(Category)
+            .filter(Category.id == transaction_data.category_id)
+            .first()
+        )
+
+        if category is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Category not found",
+            )
+
+        if category.type != new_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Category does not match transaction type",
+            )
+
+        transaction.category_id = transaction_data.category_id
+
     if transaction_data.amount is not None:
         transaction.amount = transaction_data.amount
 
     if transaction_data.type is not None:
         transaction.type = transaction_data.type.value
-
-    if transaction_data.category is not None:
-        transaction.category = transaction_data.category
 
     if transaction_data.description is not None:
         transaction.description = transaction_data.description
@@ -141,24 +190,3 @@ def delete_transaction(
     db.commit()
 
     return {"message": "Transaction deleted successfully"}
-
-
-@router.get("/")
-def get_transactions(
-    type: TransactionType | None = None,
-    category: str | None = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    query = (
-        db.query(Transaction)
-        .filter(Transaction.user_id == current_user.id)
-    )
-
-    if type is not None:
-        query = query.filter(Transaction.type == type.value)
-
-    if category is not None:
-        query = query.filter(Transaction.category == category)
-
-    return query.all()

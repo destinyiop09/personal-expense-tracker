@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>FinPulse - Smart Expense Tracker & Analytics</title>
+
+  <meta name="description"
+    content="FinPulse is a sleek, modern personal expense and budget management dashboard featuring animated analytics, interactive charts, and cash flow metrics.">
+
+  <meta property="og:title" content="FinPulse - Smart Expense Tracker & Analytics">
+  <meta property="og:description"
+    content="FinPulse is a sleek, modern personal expense and budget management dashboard featuring animated analytics, interactive charts, and cash flow metrics.">
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <!-- Navigation Header -->
+
+  <header class="app-header">
+    <div class="nav-container">
+
+      ```
+      <div class="nav-brand-group">
+
+        <a href="index.html" class="brand" title="FinPulse Financial Dashboard">
+          <span class="brand-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+          </span>
+
+          <span class="brand-title">FinPulse</span>
+        </a>
+
+        <nav class="nav-links">
+          <a href="index.html" class="nav-link active">
+            <span class="nav-link-icon">🏠</span>
+            Dashboard
+          </a>
+
+          <a href="charts.html" class="nav-link">
+            <span class="nav-link-icon">📊</span>
+            Analytics &amp; Insights
+          </a>
+        </nav>
+
+      </div>
+
+      <div class="nav-user">
+
+        <div class="user-profile-badge" id="userProfileBadge" title="Signed in user">
+          <span class="user-avatar" id="userAvatar">U</span>
+          <span class="user-email" id="userEmailDisplay">
+            User
+          </span>
+        </div>
+
+        <!-- Currency Selector -->
+        <div class="currency-selector">
+          <label for="currencySelect">Currency:</label>
+
+          <select id="currencySelect" class="form-select" aria-label="Select display currency">
+            <option value="GHS">GHS — Ghana Cedi</option>
+            <option value="USD">USD — US Dollar</option>
+          </select>
+        </div>
+
+        <button type="button" id="headerLogoutBtn" class="btn btn-secondary btn-sm" title="Sign out of FinPulse">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+
+          Log Out
+        </button>
+
+      </div>
+    </div>
+    ```
+
+  </header>
+
+  <!-- Main Content -->
+
+  <main class="container">
+
+    ```
+    <!-- Global Alert -->
+    <div id="dashboardAlert" class="alert" role="alert"></div>
+
+
+    <!-- 1. Financial Summary -->
+    <section class="summary-grid" aria-label="Financial Summary">
+
+      <div class="summary-card income" id="summaryCardIncome">
+        <div class="summary-label">
+          <span>Total Income</span>
+
+          <span class="badge badge-emerald" id="totalIncomeCount">
+            0 inflows
+          </span>
+        </div>
+
+        <div class="summary-amount" id="totalIncomeDisplay">
+          GHS 0.00
+        </div>
+
+        <div class="summary-subtext positive" id="incomeSubtext">
+          All time deposits
+        </div>
+      </div>
+
+
+      <div class="summary-card expense" id="summaryCardExpense">
+        <div class="summary-label">
+          <span>Total Expenses</span>
+
+          <span class="badge badge-rose" id="totalExpensesCount">
+            0 outflows
+          </span>
+        </div>
+
+        <div class="summary-amount" id="totalExpensesDisplay">
+          GHS 0.00
+        </div>
+
+        <div class="summary-subtext" id="expenseSubtext">
+          All recorded spending
+        </div>
+      </div>
+
+
+      <div class="summary-card balance" id="summaryCardBalance">
+        <div class="summary-label">
+          <span>Net Balance</span>
+
+          <span class="badge badge-blue" id="balanceStatusBadge">
+            Balanced
+          </span>
+        </div>
+
+        <div class="summary-amount" id="netBalanceDisplay">
+          GHS 0.00
+        </div>
+
+        <div class="summary-subtext" id="netBalanceSubtext">
+          Income minus expenses
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- 2. Monthly Budget -->
+    <section class="budget-widget" aria-label="Monthly Budget Tracker">
+
+      <div class="budget-widget-header">
+
+        <div class="budget-title">
+          <span>Monthly Budget Tracker</span>
+
+          <span class="budget-badge" id="budgetMonthBadge">
+            Current Month
+          </span>
+        </div>
+
+        <div>
+          <button type="button" id="editBudgetBtn" class="action-btn edit-btn" style="font-size: 13px;">
+            Edit Budget Target
+          </button>
+        </div>
+
+      </div>
+
+
+      <div class="budget-stats">
+
+        <div>
+          <span class="spent-highlight" id="budgetSpentDisplay">
+            GHS 0.00
+          </span>
+
+          <span class="target-subtext">
+            of
+            <strong id="budgetTargetDisplay">
+              GHS 2,500.00
+            </strong>
+            spent
+          </span>
+        </div>
+
+        <div id="budgetRemainingDisplay" style="font-weight: 600; color: var(--text-heading);">
+          GHS 2,500.00 remaining
+        </div>
+
+      </div>
+
+
+      <div class="budget-track">
+        <div class="budget-fill" id="budgetFill" style="width: 0%;"></div>
+      </div>
+
+
+      <div class="budget-meta-row">
+
+        <span id="budgetPercentDisplay">
+          0% of budget utilized
+        </span>
+
+        <span id="budgetStatusNotice">
+          Within budget limits
+        </span>
+
+      </div>
+
+    </section>
+
+
+    <!-- 3. Quick Expense Shortcuts -->
+    <div class="quick-actions-bar">
+
+      <span class="quick-actions-label">
+        Quick Add:
+      </span>
+
+      <button type="button" class="quick-chip" data-desc="Coffee" data-cat="Food" data-amt="4.50">
+        + ☕ Coffee (<span class="quick-amount" data-amount="4.50">GHS 4.50</span>)
+      </button>
+
+      <button type="button" class="quick-chip" data-desc="Lunch" data-cat="Food" data-amt="14.00">
+        + 🥪 Lunch (<span class="quick-amount" data-amount="14.00">GHS 14.00</span>)
+      </button>
+
+      <button type="button" class="quick-chip" data-desc="Groceries" data-cat="Food" data-amt="45.00">
+        + 🛒 Groceries (<span class="quick-amount" data-amount="45.00">GHS 45.00</span>)
+      </button>
+
+      <button type="button" class="quick-chip" data-desc="Transit" data-cat="Transport" data-amt="15.00">
+        + 🚗 Transit (<span class="quick-amount" data-amount="15.00">GHS 15.00</span>)
+      </button>
+
+      <button type="button" class="quick-chip" data-desc="Internet & Utilities" data-cat="Bills & Utilities"
+        data-amt="65.00">
+        + ⚡ Utility (<span class="quick-amount" data-amount="65.00">GHS 65.00</span>)
+      </button>
+
+    </div>
+
+
+    <!-- 4. Reports & Analytics -->
+    <section class="dashboard-analytics-grid" aria-label="Financial Analytics">
+
+      <!-- Spending by Category -->
+      <div class="report-card">
+
+        <h3 class="report-header">
+          Spending by Category
+        </h3>
+
+        <div id="categoryReportContainer">
+
+          <div class="empty-state" style="padding: 24px 0;">
+            <p>
+              No category breakdown available yet.
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- Spending by Month -->
+      <div class="report-card">
+
+        <h3 class="report-header">
+          Spending by Month
+        </h3>
+
+        <div id="monthlyReportContainer">
+
+          <div class="empty-state" style="padding: 24px 0;">
+            <p>
+              No monthly trends recorded yet.
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- Financial Insights -->
+      <div class="report-card">
+
+        <h3 class="report-header">
+          Financial Insights
+        </h3>
+
+        <div id="insightsReportContainer">
+
+          <ul class="insights-list">
+
+            <li class="insight-item">
+
+              <div class="insight-info">
+                <span class="insight-title">
+                  Top Category
+                </span>
+
+                <span class="insight-detail" id="insightTopCategory">
+                  None
+                </span>
+              </div>
+
+              <span class="insight-pill badge badge-rose" id="insightTopCategoryPill">
+                GHS 0.00
+              </span>
+
+            </li>
+
+
+            <li class="insight-item">
+
+              <div class="insight-info">
+                <span class="insight-title">
+                  Largest Single Expense
+                </span>
+
+                <span class="insight-detail" id="insightLargestExpense">
+                  None
+                </span>
+              </div>
+
+              <span class="insight-pill badge badge-orange" id="insightLargestExpensePill">
+                GHS 0.00
+              </span>
+
+            </li>
+
+
+            <li class="insight-item">
+
+              <div class="insight-info">
+
+                <span class="insight-title">
+                  Average Daily Spending
+                </span>
+
+                <span class="insight-detail" id="insightDailyAverage">
+                  GHS 0.00 / day
+                </span>
+
+              </div>
+
+              <span class="insight-pill badge badge-blue">
+                Estimated
+              </span>
+
+            </li>
+
+
+            <li class="insight-item">
+
+              <div class="insight-info">
+
+                <span class="insight-title">
+                  Cash Flow Status
+                </span>
+
+                <span class="insight-detail" id="insightCashFlowStatus">
+                  Balanced
+                </span>
+
+              </div>
+
+              <span class="insight-pill badge badge-emerald" id="insightCashFlowPill">
+                Healthy
+              </span>
+
+            </li>
+
+          </ul>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- 5. Transaction Toolbar -->
+    <div class="toolbar">
+
+      <h2 class="toolbar-title">
+        Transactions
+      </h2>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+
+        <a href="charts.html" class="btn btn-secondary btn-sm" title="View visual analytics, charts and insights">
+          📊 Analytics &amp; Insights
+        </a>
+
+        <button type="button" id="exportCsvBtn" class="btn btn-secondary btn-sm" title="Download transactions as CSV">
+          Export CSV
+        </button>
+
+        <button type="button" id="openAddTransactionBtn" class="btn btn-primary">
+          + Add Transaction
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <!-- 6. Transaction Filters -->
+    <section class="filter-bar" aria-label="Transaction Filters">
+
+      <div class="search-wrapper">
+
+        <span class="search-icon">
+          🔍
+        </span>
+
+        <input type="text" id="searchTransactions" class="search-input"
+          placeholder="Search by description or merchant...">
+
+      </div>
+
+
+      <div class="filter-item">
+
+        <label for="filterType">
+          Type:
+        </label>
+
+        <select id="filterType" class="form-select">
+          <option value="">
+            All Types
+          </option>
+
+          <option value="expense">
+            Expense
+          </option>
+
+          <option value="income">
+            Income
+          </option>
+        </select>
+
+      </div>
+
+
+      <div class="filter-item">
+
+        <label for="filterCategory">
+          Category:
+        </label>
+
+        <select id="filterCategory" class="form-select">
+          <option value="">
+            All Categories
+          </option>
+        </select>
+
+      </div>
+
+
+      <button type="button" id="clearFiltersBtn" class="btn btn-secondary btn-sm">
+        Clear Filters
+      </button>
+
+    </section>
+
+
+    <!-- 7. Transactions Table -->
+    <section class="table-responsive" aria-label="Transactions List">
+
+      <table class="transaction-table" id="transactionTable">
+
+        <thead>
+
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Description</th>
+            <th style="text-align: right;">
+              Amount
+            </th>
+            <th style="text-align: center;">
+              Actions
+            </th>
+          </tr>
+
+        </thead>
+
+        <tbody id="transactionsTableBody">
+
+          <tr>
+
+            <td colspan="6">
+
+              <div class="empty-state">
+
+                <strong>
+                  No transactions yet
+                </strong>
+
+                <p>
+                  Click the "+ Add Transaction" button above
+                  to record your first income or expense.
+                </p>
+
+              </div>
+
+            </td>
+
+          </tr>
+
+        </tbody>
+
+      </table>
+
+    </section>
+    ```
+
+  </main>
+
+  <!-- Add / Edit Transaction Modal -->
+
+  <div class="modal-backdrop" id="transactionModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+
+    ```
+    <div class="modal-dialog">
+
+      <div class="modal-header">
+
+        <h3 class="modal-title" id="modalTitle">
+          Add Transaction
+        </h3>
+
+        <button type="button" class="modal-close" id="closeModalBtn" aria-label="Close dialog">
+          &times;
+        </button>
+
+      </div>
+
+
+      <form id="transactionForm" autocomplete="off">
+
+        <div class="modal-body">
+
+          <div id="modalAlert" class="alert" role="alert"></div>
+
+
+          <!-- Transaction ID -->
+          <input type="hidden" id="transactionId" name="id">
+
+
+          <!-- Transaction Type -->
+          <div class="form-group">
+
+            <label>
+              Transaction Type
+            </label>
+
+            <div class="type-selector">
+
+              <button type="button" class="type-btn type-expense active" id="typeExpenseBtn" data-type="expense">
+                Expense
+              </button>
+
+              <button type="button" class="type-btn type-income" id="typeIncomeBtn" data-type="income">
+                Income
+              </button>
+
+            </div>
+
+            <input type="hidden" id="transactionType" name="type" value="expense">
+
+          </div>
+
+
+          <!-- Amount -->
+          <div class="form-group">
+
+            <label for="transactionAmount">
+              Amount (GHS)
+            </label>
+
+            <input type="number" step="0.01" min="0.01" id="transactionAmount" name="amount" class="form-input"
+              placeholder="0.00" required>
+
+            <small>
+              Enter the transaction amount in Ghana cedi (GHS).
+            </small>
+
+          </div>
+
+
+          <!-- Category -->
+          <div class="form-group">
+
+            <label for="transactionCategory">
+              Category
+            </label>
+
+            <select id="transactionCategory" name="category" class="form-select" required>
+
+              <option value="">
+                Select a category
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <!-- Description -->
+          <div class="form-group">
+
+            <label for="transactionDescription">
+              Description
+            </label>
+
+            <input type="text" id="transactionDescription" name="description" class="form-input"
+              placeholder="e.g. Grocery shopping, Freelance payout..." required>
+
+          </div>
+
+
+          <!-- Date -->
+          <div class="form-group">
+
+            <label for="transactionDate">
+              Date
+            </label>
+
+            <input type="date" id="transactionDate" name="date" class="form-input" required>
+
+          </div>
+
+        </div>
+
+
+        <div class="modal-footer">
+
+          <button type="button" class="btn btn-secondary" id="cancelModalBtn">
+            Cancel
+          </button>
+
+          <button type="submit" class="btn btn-primary" id="saveTransactionBtn">
+            Save Transaction
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+    ```
+
+  </div>
+
+  <!-- JavaScript -->
+
+  <script src="js/api.js"></script>
+
+  <script src="js/auth.js"></script>
+
+  <script src="js/transactions.js"></script>
+
+  <script src="js/dashboard.js"></script>
+
+  <!-- Keep Quick Add currency display synchronized -->
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+
+      function updateQuickAddAmounts() {
+        const amountElements = document.querySelectorAll(".quick-amount");
+
+        amountElements.forEach(function (element) {
+          const amount = Number(element.dataset.amount || 0);
+
+          if (typeof window.formatCurrency === "function") {
+            element.textContent = window.formatCurrency(amount);
+          } else {
+            const currencySelect = document.getElementById("currencySelect");
+            const currency = currencySelect ? currencySelect.value : "GHS";
+
+            element.textContent =
+              currency + " " +
+              amount.toLocaleString("en-GH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              });
+          }
+        });
+      }
+
+      updateQuickAddAmounts();
+
+      const currencySelect = document.getElementById("currencySelect");
+
+      if (currencySelect) {
+        currencySelect.addEventListener("change", function () {
+          setTimeout(updateQuickAddAmounts, 0);
+        });
+      }
+
+      // If the existing dashboard code changes currency programmatically,
+      // refresh the Quick Add labels whenever the selector changes.
+      const observer = new MutationObserver(function () {
+        updateQuickAddAmounts();
+      });
+
+      if (currencySelect) {
+        observer.observe(currencySelect, {
+          attributes: true,
+          attributeFilter: ["value"]
+        });
+      }
+
+    });
+  </script>
+
+</body>
+
+</html>
