@@ -1,996 +1,44 @@
-/* ============================================================================
-   charts.js - FinPulse Analytics & Charts
-   ============================================================================
-   IMPORTANT:
-   - No hard-coded user names.
-   - No dummy Alex Morgan account.
-   - Uses the current authenticated user's information.
-   - Uses the selected currency from #currencySelect.
-   - Falls back to transaction data when summary endpoints are unavailable.
-   ============================================================================ */
+/**
+ * charts.js
+ * FinPulse Analytics page.
+ *
+ * IMPORTANT:
+ * - Every financial value is loaded from the authenticated FastAPI API.
+ * - No demo users, dummy transactions, or hard-coded financial records.
+ * - This page uses the actual DOM in charts.html (SVG/custom containers).
+ */
 
-(function () {
+(() => {
   "use strict";
 
-  /* ==========================================================================
-     CONFIGURATION
-     ========================================================================== */
+  const BASE_CURRENCY = "GHS";
+  const CURRENCY_META = {
+    GHS: { locale: "en-GH", code: "GHS" },
+    USD: { locale: "en-US", code: "USD" }
+  };
 
-  const CHART_COLORS = [
-    "#6366f1",
-    "#10b981",
-    "#f59e0b",
-    "#ef4444",
-    "#8b5cf6",
-    "#06b6d4",
-    "#ec4899",
-    "#84cc16",
-    "#f97316",
-    "#64748b"
-  ];
+  let allTransactions = [];
+  let categorySummary = [];
+  let monthlySummary = [];
+  let currentPeriod = "all";
+  let viewType = "expense";
+  let exchangeRate = 1;
+  let selectedCurrency =
+    localStorage.getItem("finpulse_currency") || BASE_CURRENCY;
 
-  let categoryChart = null;
-  let monthlyChart = null;
-
-  /* ==========================================================================
-     USER
-     ========================================================================== */
-
-  function getCurrentUser() {
-    let name = localStorage.getItem("user_name") || "";
-    let email = localStorage.getItem("user_email") || "";
-
-    name = name.trim();
-    email = email.trim();
-
-    if (!name) {
-      name = "";
-    }
-
-    return {
-      name,
-      email
-    };
+  if (!CURRENCY_META[selectedCurrency]) {
+    selectedCurrency = BASE_CURRENCY;
   }
 
-  function getUserDisplayName() {
-    const user = getCurrentUser();
+  const $ = id => document.getElementById(id);
 
-    if (user.name) {
-      return user.name;
-    }
-
-    if (user.email) {
-      return user.email;
-    }
-
-    return "Your Account";
+  function number(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
   }
-
-  function updateUserDisplay() {
-    const user = getCurrentUser();
-    const displayName = getUserDisplayName();
-
-    const nameElements = [
-      document.getElementById("userEmailDisplay"),
-      document.getElementById("chartUserName"),
-      document.getElementById("welcomeUserName"),
-      document.getElementById("analyticsUserName")
-    ];
-
-    nameElements.forEach(element => {
-      if (element) {
-        element.textContent = displayName;
-      }
-    });
-
-    const avatar = document.getElementById("userAvatar");
-
-    if (avatar) {
-      if (user.name) {
-        const initials = user.name
-          .split(/\s+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map(part => part.charAt(0).toUpperCase())
-          .join("");
-
-        avatar.textContent = initials || "U";
-      } else if (user.email) {
-        avatar.textContent =
-          user.email.charAt(0).toUpperCase();
-      } else {
-        avatar.textContent = "U";
-      }
-    }
-  }
-
-  /* ==========================================================================
-     CURRENCY
-     ========================================================================== */
-
-  function getCurrency() {
-    const selector =
-      document.getElementById("currencySelect");
-
-    const stored =
-      localStorage.getItem("currency") ||
-      localStorage.getItem("selected_currency") ||
-      localStorage.getItem("display_currency");
-
-    const value =
-      selector?.value ||
-      stored ||
-      "GHS";
-
-    return String(value).toUpperCase();
-  }
-
-  function setCurrency(value) {
-    const currency = String(value || "GHS").toUpperCase();
-
-    localStorage.setItem("currency", currency);
-    localStorage.setItem("selected_currency", currency);
-    localStorage.setItem("display_currency", currency);
-  }
-
-  function formatMoney(amount) {
-    const numericAmount = Number(amount) || 0;
-    const currency = getCurrency();
-
-    try {
-      return new Intl.NumberFormat("en-GH", {
-        style: "currency",
-        currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(numericAmount);
-    } catch (error) {
-      return `${currency} ${numericAmount.toFixed(2)}`;
-    }
-  }
-
-  /* ==========================================================================
-     DOM HELPERS
-     ========================================================================== */
-
-  function getElement(...ids) {
-    for (const id of ids) {
-      const element = document.getElementById(id);
-
-      if (element) {
-        return element;
-      }
-    }
-
-    return null;
-  }
-
-  function setText(ids, value) {
-    const element = getElement(...ids);
-
-    if (element) {
-      element.textContent = value;
-    }
-  }
-
-  /* ==========================================================================
-     TRANSACTION NORMALIZATION
-     ========================================================================== */
-
-  function normalizeTransaction(transaction) {
-    if (!transaction || typeof transaction !== "object") {
-      return null;
-    }
-
-    const type =
-      String(
-        transaction.type ||
-        transaction.transaction_type ||
-        ""
-      ).toLowerCase();
-
-    const amount =
-      Number(
-        transaction.amount ??
-        transaction.value ??
-        0
-      ) || 0;
-
-    const category =
-      transaction.category ||
-      transaction.category_name ||
-      "Other";
-
-    const description =
-      transaction.description ||
-      transaction.merchant ||
-      transaction.note ||
-      "Transaction";
-
-    const date =
-      transaction.date ||
-      transaction.transaction_date ||
-      transaction.created_at ||
-      "";
-
-    return {
-      id:
-        transaction.id ??
-        transaction._id ??
-        cryptoRandomId(),
-
-      type:
-        type === "income"
-          ? "income"
-          : "expense",
-
-      amount,
-      category: String(category),
-      description: String(description),
-      date: String(date)
-    };
-  }
-
-  function cryptoRandomId() {
-    return `chart-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2)}`;
-  }
-
-  /* ==========================================================================
-     LOAD TRANSACTIONS
-     ========================================================================== */
-
-  async function loadTransactions() {
-    try {
-      const response =
-        await apiRequest("/transactions/");
-
-      if (Array.isArray(response)) {
-        return response
-          .map(normalizeTransaction)
-          .filter(Boolean);
-      }
-
-      if (Array.isArray(response?.transactions)) {
-        return response.transactions
-          .map(normalizeTransaction)
-          .filter(Boolean);
-      }
-
-      if (Array.isArray(response?.data)) {
-        return response.data
-          .map(normalizeTransaction)
-          .filter(Boolean);
-      }
-
-    } catch (error) {
-      console.error(
-        "Unable to load transactions:",
-        error
-      );
-    }
-
-    return [];
-  }
-
-  /* ==========================================================================
-     SUMMARY CALCULATIONS
-     ========================================================================== */
-
-  function calculateSummary(transactions) {
-    let income = 0;
-    let expenses = 0;
-
-    transactions.forEach(transaction => {
-      if (transaction.type === "income") {
-        income += transaction.amount;
-      } else {
-        expenses += transaction.amount;
-      }
-    });
-
-    return {
-      income,
-      expenses,
-      balance: income - expenses
-    };
-  }
-
-  function calculateCategoryTotals(transactions) {
-    const totals = {};
-
-    transactions
-      .filter(transaction => transaction.type === "expense")
-      .forEach(transaction => {
-        const category =
-          transaction.category || "Other";
-
-        totals[category] =
-          (totals[category] || 0) +
-          transaction.amount;
-      });
-
-    return totals;
-  }
-
-  function calculateMonthlyTotals(transactions) {
-    const totals = {};
-
-    transactions
-      .filter(transaction => transaction.type === "expense")
-      .forEach(transaction => {
-        if (!transaction.date) return;
-
-        const parsedDate =
-          new Date(transaction.date);
-
-        if (Number.isNaN(parsedDate.getTime())) {
-          return;
-        }
-
-        const year =
-          parsedDate.getFullYear();
-
-        const month =
-          String(
-            parsedDate.getMonth() + 1
-          ).padStart(2, "0");
-
-        const key = `${year}-${month}`;
-
-        totals[key] =
-          (totals[key] || 0) +
-          transaction.amount;
-      });
-
-    return totals;
-  }
-
-  /* ==========================================================================
-     CHART.JS CHECK
-     ========================================================================== */
-
-  function chartJsAvailable() {
-    return (
-      typeof window.Chart !== "undefined"
-    );
-  }
-
-  /* ==========================================================================
-     CATEGORY CHART
-     ========================================================================== */
-
-  function renderCategoryChart(transactions) {
-    const canvas =
-      getElement(
-        "categoryChart",
-        "spendingByCategoryChart"
-      );
-
-    if (!canvas) {
-      renderCategoryFallback(transactions);
-      return;
-    }
-
-    if (!chartJsAvailable()) {
-      renderCategoryFallback(transactions);
-      return;
-    }
-
-    const totals =
-      calculateCategoryTotals(transactions);
-
-    const labels =
-      Object.keys(totals);
-
-    const values =
-      labels.map(label => totals[label]);
-
-    if (categoryChart) {
-      categoryChart.destroy();
-    }
-
-    categoryChart =
-      new Chart(canvas, {
-        type: "doughnut",
-
-        data: {
-          labels,
-
-          datasets: [
-            {
-              data: values,
-
-              backgroundColor:
-                labels.map(
-                  (_, index) =>
-                    CHART_COLORS[
-                    index %
-                    CHART_COLORS.length
-                    ]
-                ),
-
-              borderWidth: 2
-            }
-          ]
-        },
-
-        options: {
-          responsive: true,
-
-          maintainAspectRatio: false,
-
-          plugins: {
-            legend: {
-              position: "bottom"
-            },
-
-            tooltip: {
-              callbacks: {
-                label: function (context) {
-                  const value =
-                    Number(
-                      context.raw
-                    ) || 0;
-
-                  return `${context.label}: ${formatMoney(value)}`;
-                }
-              }
-            }
-          }
-        }
-      });
-
-    renderCategoryList(
-      labels,
-      values
-    );
-  }
-
-  function renderCategoryFallback(transactions) {
-    const container =
-      getElement(
-        "categoryReportContainer",
-        "categoryChartContainer"
-      );
-
-    if (!container) return;
-
-    const totals =
-      calculateCategoryTotals(transactions);
-
-    const entries =
-      Object.entries(totals)
-        .sort((a, b) => b[1] - a[1]);
-
-    if (!entries.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <p>No category spending recorded yet.</p>
-        </div>
-      `;
-
-      return;
-    }
-
-    container.innerHTML = entries
-      .map(([category, amount]) => `
-        <div class="chart-row">
-          <span>${escapeHtml(category)}</span>
-          <strong>${formatMoney(amount)}</strong>
-        </div>
-      `)
-      .join("");
-  }
-
-  function renderCategoryList(
-    labels,
-    values
-  ) {
-    const container =
-      getElement(
-        "categoryReportContainer"
-      );
-
-    if (!container) return;
-
-    if (!labels.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <p>No category spending recorded yet.</p>
-        </div>
-      `;
-
-      return;
-    }
-
-    container.innerHTML =
-      labels
-        .map(
-          (label, index) => `
-            <div class="chart-row">
-              <span>
-                ${escapeHtml(label)}
-              </span>
-
-              <strong>
-                ${formatMoney(values[index])}
-              </strong>
-            </div>
-          `
-        )
-        .join("");
-  }
-
-  /* ==========================================================================
-     MONTHLY CHART
-     ========================================================================== */
-
-  function renderMonthlyChart(transactions) {
-    const canvas =
-      getElement(
-        "monthlyChart",
-        "spendingByMonthChart"
-      );
-
-    const totals =
-      calculateMonthlyTotals(
-        transactions
-      );
-
-    const sortedMonths =
-      Object.keys(totals).sort();
-
-    const labels =
-      sortedMonths.map(formatMonth);
-
-    const values =
-      sortedMonths.map(
-        month => totals[month]
-      );
-
-    if (
-      canvas &&
-      chartJsAvailable()
-    ) {
-      if (monthlyChart) {
-        monthlyChart.destroy();
-      }
-
-      monthlyChart =
-        new Chart(canvas, {
-          type: "bar",
-
-          data: {
-            labels,
-
-            datasets: [
-              {
-                label: "Expenses",
-
-                data: values,
-
-                borderWidth: 1
-              }
-            ]
-          },
-
-          options: {
-            responsive: true,
-
-            maintainAspectRatio: false,
-
-            scales: {
-              y: {
-                beginAtZero: true,
-
-                ticks: {
-                  callback: function (value) {
-                    return formatMoney(value);
-                  }
-                }
-              }
-            },
-
-            plugins: {
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    return formatMoney(
-                      context.raw
-                    );
-                  }
-                }
-              }
-            }
-          }
-        });
-    }
-
-    renderMonthlyList(
-      sortedMonths,
-      values
-    );
-  }
-
-  function renderMonthlyList(
-    months,
-    values
-  ) {
-    const container =
-      getElement(
-        "monthlyReportContainer"
-      );
-
-    if (!container) return;
-
-    if (!months.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <p>No monthly spending recorded yet.</p>
-        </div>
-      `;
-
-      return;
-    }
-
-    container.innerHTML =
-      months
-        .map(
-          (month, index) => `
-            <div class="chart-row">
-              <span>
-                ${escapeHtml(
-            formatMonth(month)
-          )}
-              </span>
-
-              <strong>
-                ${formatMoney(values[index])}
-              </strong>
-            </div>
-          `
-        )
-        .join("");
-  }
-
-  function formatMonth(value) {
-    const date =
-      new Date(`${value}-01T00:00:00`);
-
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-
-    return date.toLocaleDateString(
-      "en-GH",
-      {
-        month: "short",
-        year: "numeric"
-      }
-    );
-  }
-
-  /* ==========================================================================
-     INSIGHTS
-     ========================================================================== */
-
-  function renderInsights(transactions) {
-    const expenses =
-      transactions.filter(
-        transaction =>
-          transaction.type === "expense"
-      );
-
-    if (!expenses.length) {
-      setText(
-        ["insightTopCategory"],
-        "None"
-      );
-
-      setText(
-        ["insightTopCategoryPill"],
-        formatMoney(0)
-      );
-
-      setText(
-        ["insightLargestExpense"],
-        "None"
-      );
-
-      setText(
-        ["insightLargestExpensePill"],
-        formatMoney(0)
-      );
-
-      setText(
-        ["insightDailyAverage"],
-        `${formatMoney(0)} / day`
-      );
-
-      setText(
-        ["insightCashFlowStatus"],
-        "No spending yet"
-      );
-
-      return;
-    }
-
-    const categoryTotals =
-      calculateCategoryTotals(
-        transactions
-      );
-
-    const topCategory =
-      Object.entries(categoryTotals)
-        .sort((a, b) => b[1] - a[1])[0];
-
-    const largestExpense =
-      [...expenses].sort(
-        (a, b) =>
-          b.amount - a.amount
-      )[0];
-
-    const totalExpenses =
-      expenses.reduce(
-        (sum, transaction) =>
-          sum + transaction.amount,
-        0
-      );
-
-    const uniqueDates =
-      new Set(
-        expenses
-          .map(
-            transaction =>
-              transaction.date
-                ? transaction.date.substring(
-                  0,
-                  10
-                )
-                : null
-          )
-          .filter(Boolean)
-      );
-
-    const days =
-      Math.max(
-        uniqueDates.size,
-        1
-      );
-
-    const dailyAverage =
-      totalExpenses / days;
-
-    setText(
-      ["insightTopCategory"],
-      topCategory
-        ? topCategory[0]
-        : "None"
-    );
-
-    setText(
-      ["insightTopCategoryPill"],
-      topCategory
-        ? formatMoney(topCategory[1])
-        : formatMoney(0)
-    );
-
-    setText(
-      ["insightLargestExpense"],
-      largestExpense
-        ? largestExpense.description
-        : "None"
-    );
-
-    setText(
-      ["insightLargestExpensePill"],
-      largestExpense
-        ? formatMoney(
-          largestExpense.amount
-        )
-        : formatMoney(0)
-    );
-
-    setText(
-      ["insightDailyAverage"],
-      `${formatMoney(
-        dailyAverage
-      )} / day`
-    );
-  }
-
-  /* ==========================================================================
-     SUMMARY
-     ========================================================================== */
-
-  function renderSummary(transactions) {
-    const summary =
-      calculateSummary(
-        transactions
-      );
-
-    setText(
-      ["totalIncomeDisplay"],
-      formatMoney(summary.income)
-    );
-
-    setText(
-      ["totalExpensesDisplay"],
-      formatMoney(summary.expenses)
-    );
-
-    setText(
-      ["netBalanceDisplay"],
-      formatMoney(summary.balance)
-    );
-
-    setText(
-      ["totalIncomeCount"],
-      `${transactions.filter(
-        transaction =>
-          transaction.type === "income"
-      ).length} inflows`
-    );
-
-    setText(
-      ["totalExpensesCount"],
-      `${transactions.filter(
-        transaction =>
-          transaction.type === "expense"
-      ).length} outflows`
-    );
-  }
-
-  /* ==========================================================================
-     CURRENCY SELECTOR
-     ========================================================================== */
-
-  function setupCurrencySelector() {
-    const selector =
-      document.getElementById(
-        "currencySelect"
-      );
-
-    if (!selector) return;
-
-    const saved =
-      localStorage.getItem("currency") ||
-      localStorage.getItem("selected_currency") ||
-      localStorage.getItem("display_currency");
-
-    if (
-      saved &&
-      [...selector.options].some(
-        option =>
-          option.value === saved
-      )
-    ) {
-      selector.value = saved;
-    }
-
-    setCurrency(selector.value);
-
-    selector.addEventListener(
-      "change",
-      function () {
-        setCurrency(
-          selector.value
-        );
-
-        /*
-         * Re-render everything so every
-         * displayed amount changes currency.
-         */
-        refreshCharts();
-      }
-    );
-  }
-
-  /* ==========================================================================
-     QUICK ADD DISPLAY
-     ========================================================================== */
-
-  function updateQuickAddCurrency() {
-    const currency =
-      getCurrency();
-
-    document
-      .querySelectorAll(
-        ".quick-chip"
-      )
-      .forEach(button => {
-        const amount =
-          Number(
-            button.dataset.amt
-          );
-
-        if (!Number.isFinite(amount)) {
-          return;
-        }
-
-        const description =
-          button.dataset.desc ||
-          "";
-
-        const icon =
-          getQuickIcon(
-            description
-          );
-
-        button.textContent =
-          `+ ${icon} ${description} (${formatMoney(amount)})`;
-      });
-  }
-
-  function getQuickIcon(description) {
-    const text =
-      String(description)
-        .toLowerCase();
-
-    if (text.includes("coffee")) {
-      return "☕";
-    }
-
-    if (text.includes("lunch")) {
-      return "🥪";
-    }
-
-    if (text.includes("grocer")) {
-      return "🛒";
-    }
-
-    if (text.includes("transit")) {
-      return "🚗";
-    }
-
-    if (
-      text.includes("utility") ||
-      text.includes("internet")
-    ) {
-      return "⚡";
-    }
-
-    return "💳";
-  }
-
-  /* ==========================================================================
-     REFRESH
-     ========================================================================== */
-
-  async function refreshCharts() {
-    updateUserDisplay();
-
-    updateQuickAddCurrency();
-
-    const transactions =
-      await loadTransactions();
-
-    renderSummary(
-      transactions
-    );
-
-    renderCategoryChart(
-      transactions
-    );
-
-    renderMonthlyChart(
-      transactions
-    );
-
-    renderInsights(
-      transactions
-    );
-  }
-
-  /* ==========================================================================
-     ESCAPE HTML
-     ========================================================================== */
 
   function escapeHtml(value) {
-    return String(value)
+    return String(value ?? "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -998,28 +46,696 @@
       .replace(/'/g, "&#039;");
   }
 
-  /* ==========================================================================
-     PUBLIC API
-     ========================================================================== */
+  function formatMoney(amount) {
+    const meta = CURRENCY_META[selectedCurrency] || CURRENCY_META.GHS;
+    return new Intl.NumberFormat(meta.locale, {
+      style: "currency",
+      currency: meta.code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(number(amount) * exchangeRate);
+  }
+
+  function parseDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function normalizeTransaction(item) {
+    if (!item || typeof item !== "object") return null;
+
+    const type = String(
+      item.type ?? item.transaction_type ?? ""
+    ).toLowerCase();
+
+    const date = item.date ?? item.transaction_date ?? item.created_at ?? "";
+
+    return {
+      id: item.id ?? item._id ?? "",
+      type: type === "income" ? "income" : "expense",
+      amount: number(item.amount ?? item.value),
+      category: String(
+        item.category_name ??
+        item.category ??
+        item.category?.name ??
+        "Uncategorized"
+      ),
+      description: String(
+        item.description ??
+        item.merchant ??
+        item.note ??
+        "Transaction"
+      ),
+      date: String(date)
+    };
+  }
+
+  function normalizeCategorySummary(data) {
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map(item => ({
+        category: String(item.category ?? item.name ?? "Uncategorized"),
+        total: number(item.total ?? item.amount)
+      }))
+      .filter(item => item.total > 0);
+  }
+
+  function normalizeMonthlySummary(data) {
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map(item => ({
+        year: number(item.year),
+        month: number(item.month),
+        total: number(item.total ?? item.amount)
+      }))
+      .filter(
+        item =>
+          item.year > 0 &&
+          item.month >= 1 &&
+          item.month <= 12
+      )
+      .sort((a, b) =>
+        a.year - b.year || a.month - b.month
+      );
+  }
+
+  function periodStart(period) {
+    const now = new Date();
+
+    if (period === "year") {
+      return new Date(now.getFullYear(), 0, 1);
+    }
+
+    if (period === "6months") {
+      return new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    }
+
+    if (period === "30days") {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - 29);
+      return start;
+    }
+
+    return null;
+  }
+
+  function filterTransactions() {
+    const start = periodStart(currentPeriod);
+    if (!start) return [...allTransactions];
+
+    return allTransactions.filter(transaction => {
+      const date = parseDate(transaction.date);
+      return date && date >= start;
+    });
+  }
+
+  function setText(id, value) {
+    const element = $(id);
+    if (element) element.textContent = value;
+  }
+
+  function setUserDisplay() {
+    const email = String(
+      localStorage.getItem("user_email") || ""
+    ).trim();
+
+    const name = String(
+      localStorage.getItem("user_name") || ""
+    ).trim();
+
+    const display = name || email || "Account";
+    setText("userEmailDisplay", display);
+
+    const avatar = $("userAvatar");
+    if (avatar) {
+      if (name) {
+        const parts = name.split(/\s+/).filter(Boolean);
+        avatar.textContent =
+          parts.length > 1
+            ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+            : name.slice(0, 2).toUpperCase();
+      } else if (email) {
+        avatar.textContent = email.split("@")[0].slice(0, 2).toUpperCase();
+      } else {
+        avatar.textContent = "U";
+      }
+    }
+  }
+
+  async function loadData() {
+    const [transactionsResult, categoriesResult, monthlyResult] =
+      await Promise.all([
+        apiRequest("/transactions/", { method: "GET" }),
+        apiRequest("/summary/categories", { method: "GET" }),
+        apiRequest("/summary/monthly", { method: "GET" })
+      ]);
+
+    const transactionRows = Array.isArray(transactionsResult)
+      ? transactionsResult
+      : Array.isArray(transactionsResult?.transactions)
+        ? transactionsResult.transactions
+        : Array.isArray(transactionsResult?.data)
+          ? transactionsResult.data
+          : [];
+
+    allTransactions = transactionRows
+      .map(normalizeTransaction)
+      .filter(Boolean);
+
+    categorySummary = normalizeCategorySummary(categoriesResult);
+    monthlySummary = normalizeMonthlySummary(monthlyResult);
+
+    // The backend summary endpoints return expense-only category/month totals.
+    // For the analytics page we use the authenticated user's transaction rows
+    // as the source of truth for the income/expense comparison.
+  }
+
+  async function loadExchangeRate() {
+    if (selectedCurrency === BASE_CURRENCY) {
+      exchangeRate = 1;
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `https://api.frankfurter.dev/v1/latest?base=${BASE_CURRENCY}&symbols=${selectedCurrency}`,
+        { headers: { Accept: "application/json" } }
+      );
+
+      if (!response.ok) throw new Error("Exchange rate unavailable.");
+
+      const data = await response.json();
+      const rate = number(data?.rates?.[selectedCurrency]);
+
+      exchangeRate = rate > 0 ? rate : 1;
+    } catch (error) {
+      console.warn("Using GHS display because exchange rate failed.", error);
+      selectedCurrency = BASE_CURRENCY;
+      exchangeRate = 1;
+    }
+  }
+
+  function getMonthlyCashFlow(transactions) {
+    const map = new Map();
+
+    transactions.forEach(transaction => {
+      const date = parseDate(transaction.date);
+      if (!date) return;
+
+      const key =
+        `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+      if (!map.has(key)) {
+        map.set(key, { key, income: 0, expense: 0 });
+      }
+
+      const row = map.get(key);
+      if (transaction.type === "income") {
+        row.income += transaction.amount;
+      } else {
+        row.expense += transaction.amount;
+      }
+    });
+
+    return [...map.values()].sort((a, b) =>
+      a.key.localeCompare(b.key)
+    );
+  }
+
+  function getCategoryTotals(transactions) {
+    const totals = new Map();
+
+    transactions
+      .filter(transaction =>
+        viewType === "income"
+          ? transaction.type === "income"
+          : transaction.type === "expense"
+      )
+      .forEach(transaction => {
+        const category = transaction.category || "Uncategorized";
+        totals.set(
+          category,
+          (totals.get(category) || 0) + transaction.amount
+        );
+      });
+
+    return [...totals.entries()]
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total);
+  }
+
+  function renderKpis(transactions) {
+    const relevant = transactions.filter(t =>
+      viewType === "income"
+        ? t.type === "income"
+        : t.type === "expense"
+    );
+
+    const total = relevant.reduce((sum, t) => sum + t.amount, 0);
+    const categories = getCategoryTotals(transactions);
+    const top = categories[0];
+
+    const monthly = getMonthlyCashFlow(transactions);
+    const peak = [...monthly].sort(
+      (a, b) =>
+        (viewType === "income" ? b.income : b.expense) -
+        (viewType === "income" ? a.income : a.expense)
+    )[0];
+
+    const monthsWithData = monthly.filter(row =>
+      viewType === "income" ? row.income > 0 : row.expense > 0
+    );
+
+    const averageMonthly =
+      monthsWithData.length
+        ? total / monthsWithData.length
+        : 0;
+
+    setText("kpiTotalAnalyzed", formatMoney(total));
+    setText(
+      "kpiTotalAnalyzedSub",
+      `${relevant.length} transaction${relevant.length === 1 ? "" : "s"} in selected time range`
+    );
+
+    setText("kpiTopCategory", top?.category || "None");
+    setText(
+      "kpiTopCategorySub",
+      top
+        ? `${formatMoney(top.total)} of total`
+        : `${formatMoney(0)} of total`
+    );
+
+    setText(
+      "kpiPeakMonth",
+      peak ? formatMonthKey(peak.key) : "None"
+    );
+
+    setText(
+      "kpiPeakMonthSub",
+      peak
+        ? `${formatMoney(viewType === "income" ? peak.income : peak.expense)} recorded`
+        : `${formatMoney(0)} recorded`
+    );
+
+    setText("kpiAvgMonthly", formatMoney(averageMonthly));
+    setText(
+      "kpiAvgMonthlySub",
+      "Average monthly outflow"
+    );
+
+    setText(
+      "pieCenterLabel",
+      viewType === "income" ? "Total Income" : "Total Spent"
+    );
+    setText("pieCenterValue", formatMoney(total));
+    setText(
+      "pieChartTitle",
+      viewType === "income"
+        ? "Income Breakdown by Category"
+        : "Expense Breakdown by Category"
+    );
+  }
+
+  function formatMonthKey(key) {
+    const [year, month] = String(key).split("-").map(Number);
+    if (!year || !month) return key;
+
+    return new Date(year, month - 1, 1).toLocaleDateString("en-GH", {
+      month: "short",
+      year: "numeric"
+    });
+  }
+
+  function renderPie(categories) {
+    const container = $("pieSvgContainer");
+    const legend = $("pieLegendContainer");
+
+    if (!container || !legend) return;
+
+    if (!categories.length) {
+      container.innerHTML = "";
+      legend.innerHTML =
+        `<p class="text-muted" style="font-size:13px;">No data recorded for the selected range.</p>`;
+      return;
+    }
+
+    const total = categories.reduce((sum, item) => sum + item.total, 0);
+
+    // Use an SVG donut. No chart library is required.
+    const cx = 150;
+    const cy = 150;
+    const radius = 105;
+    const circumference = 2 * Math.PI * radius;
+
+    let offset = 0;
+
+    const segments = categories.map((item, index) => {
+      const length = total ? (item.total / total) * circumference : 0;
+      const segment = {
+        ...item,
+        index,
+        length,
+        offset
+      };
+      offset += length;
+      return segment;
+    });
+
+    const circles = segments
+      .map(item => `
+        <circle
+          cx="${cx}"
+          cy="${cy}"
+          r="${radius}"
+          fill="none"
+          stroke="hsl(${item.index * 47 + 220} 70% 55%)"
+          stroke-width="42"
+          stroke-dasharray="${item.length} ${circumference - item.length}"
+          stroke-dashoffset="${-item.offset}"
+          transform="rotate(-90 ${cx} ${cy})"
+        >
+          <title>${escapeHtml(item.category)}: ${escapeHtml(formatMoney(item.total))}</title>
+        </circle>
+      `)
+      .join("");
+
+    container.innerHTML = `
+      <svg viewBox="0 0 300 300"
+           width="100%"
+           height="100%"
+           role="img"
+           aria-label="Spending by category">
+        <circle cx="150" cy="150" r="105" fill="none"
+                stroke="var(--border-color, #e5e7eb)" stroke-width="42"></circle>
+        ${circles}
+      </svg>
+    `;
+
+    legend.innerHTML = segments
+      .map(item => {
+        const percent = total ? (item.total / total) * 100 : 0;
+        return `
+          <div class="pie-legend-item">
+            <span class="pie-legend-dot"
+                  style="background:hsl(${item.index * 47 + 220} 70% 55%);"></span>
+            <span style="flex:1;">${escapeHtml(item.category)}</span>
+            <strong>${escapeHtml(formatMoney(item.total))}</strong>
+            <span class="text-muted" style="margin-left:6px;">
+              ${percent.toFixed(1)}%
+            </span>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  function renderBarChart(monthly) {
+    const container = $("barChartContainer");
+    if (!container) return;
+
+    if (!monthly.length) {
+      container.innerHTML =
+        `<p class="text-muted" style="font-size:13px;text-align:center;padding:24px;">No monthly transaction data recorded yet.</p>`;
+      return;
+    }
+
+    const width = 900;
+    const height = 320;
+    const left = 55;
+    const right = 20;
+    const top = 20;
+    const bottom = 60;
+    const chartWidth = width - left - right;
+    const chartHeight = height - top - bottom;
+
+    const maxValue = Math.max(
+      1,
+      ...monthly.flatMap(row => [row.income, row.expense])
+    );
+
+    const groupWidth = chartWidth / monthly.length;
+    const barWidth = Math.max(8, Math.min(28, groupWidth * 0.25));
+
+    const bars = monthly.map((row, index) => {
+      const center = left + groupWidth * index + groupWidth / 2;
+      const incomeHeight = (row.income / maxValue) * chartHeight;
+      const expenseHeight = (row.expense / maxValue) * chartHeight;
+
+      const xIncome = center - barWidth - 2;
+      const xExpense = center + 2;
+      const yIncome = top + chartHeight - incomeHeight;
+      const yExpense = top + chartHeight - expenseHeight;
+
+      return `
+        <rect x="${xIncome}" y="${yIncome}" width="${barWidth}" height="${incomeHeight}"
+              fill="var(--income, #10b981)" rx="3">
+          <title>${escapeHtml(formatMonthKey(row.key))} income: ${escapeHtml(formatMoney(row.income))}</title>
+        </rect>
+        <rect x="${xExpense}" y="${yExpense}" width="${barWidth}" height="${expenseHeight}"
+              fill="var(--expense, #ef4444)" rx="3">
+          <title>${escapeHtml(formatMonthKey(row.key))} expenses: ${escapeHtml(formatMoney(row.expense))}</title>
+        </rect>
+        <text x="${center}" y="${height - 25}" text-anchor="middle"
+              font-size="11" fill="currentColor">${escapeHtml(formatMonthKey(row.key))}</text>
+      `;
+    }).join("");
+
+    container.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="320"
+           role="img" aria-label="Monthly income and expense comparison">
+        <line x1="${left}" y1="${top + chartHeight}"
+              x2="${width - right}" y2="${top + chartHeight}"
+              stroke="currentColor" opacity=".2"></line>
+        ${bars}
+      </svg>
+    `;
+  }
+
+  function renderTrend(monthly) {
+    const container = $("trendChartContainer");
+    if (!container) return;
+
+    if (!monthly.length) {
+      container.innerHTML =
+        `<p class="text-muted" style="font-size:13px;text-align:center;padding:24px;">No spending trend data recorded yet.</p>`;
+      return;
+    }
+
+    const width = 900;
+    const height = 260;
+    const left = 50;
+    const right = 25;
+    const top = 20;
+    const bottom = 45;
+    const chartWidth = width - left - right;
+    const chartHeight = height - top - bottom;
+
+    const values = monthly.map(row => row.expense);
+    const maxValue = Math.max(1, ...values);
+
+    const points = monthly.map((row, index) => {
+      const x =
+        monthly.length === 1
+          ? left + chartWidth / 2
+          : left + (index / (monthly.length - 1)) * chartWidth;
+
+      const y =
+        top + chartHeight - (row.expense / maxValue) * chartHeight;
+
+      return { x, y, row };
+    });
+
+    const path = points
+      .map((point, index) =>
+        `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
+      )
+      .join(" ");
+
+    const circles = points
+      .map(point => `
+        <circle cx="${point.x}" cy="${point.y}" r="4"
+                fill="currentColor">
+          <title>${escapeHtml(formatMonthKey(point.row.key))}: ${escapeHtml(formatMoney(point.row.expense))}</title>
+        </circle>
+        <text x="${point.x}" y="${height - 18}" text-anchor="middle"
+              font-size="10" fill="currentColor">
+          ${escapeHtml(formatMonthKey(point.row.key))}
+        </text>
+      `)
+      .join("");
+
+    container.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="260"
+           role="img" aria-label="Monthly expense trend">
+        <line x1="${left}" y1="${top + chartHeight}"
+              x2="${width - right}" y2="${top + chartHeight}"
+              stroke="currentColor" opacity=".2"></line>
+        <path d="${path}" fill="none" stroke="currentColor"
+              stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+        ${circles}
+      </svg>
+    `;
+  }
+
+  function renderCategoryTable(categories) {
+    const body = $("categoryTableBody");
+    if (!body) return;
+
+    if (!categories.length) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">
+            No category data recorded for the selected range.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const total = categories.reduce((sum, item) => sum + item.total, 0);
+
+    body.innerHTML = categories
+      .map(item => {
+        const count = filterTransactions().filter(transaction =>
+          (transaction.category || "Uncategorized") === item.category &&
+          (viewType === "income"
+            ? transaction.type === "income"
+            : transaction.type === "expense")
+        ).length;
+
+        const average = count ? item.total / count : 0;
+        const share = total ? (item.total / total) * 100 : 0;
+
+        return `
+          <tr>
+            <td>${escapeHtml(item.category)}</td>
+            <td>${escapeHtml(formatMoney(item.total))}</td>
+            <td>${share.toFixed(1)}%</td>
+            <td>${count}</td>
+            <td>${escapeHtml(formatMoney(average))}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  function renderEmptyStateIfNeeded(transactions) {
+    const hasData = transactions.length > 0;
+    if (hasData) return;
+
+    const message =
+      currentPeriod === "all"
+        ? "No transactions have been recorded for this account yet."
+        : "No transactions were recorded in the selected time range.";
+
+    ["pieLegendContainer", "barChartContainer", "trendChartContainer"].forEach(id => {
+      const element = $(id);
+      if (element) {
+        element.innerHTML =
+          `<p class="text-muted" style="font-size:13px;text-align:center;padding:24px;">${escapeHtml(message)}</p>`;
+      }
+    });
+
+    const body = $("categoryTableBody");
+    if (body) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">
+            ${escapeHtml(message)}
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  function render() {
+    const transactions = filterTransactions();
+
+    renderKpis(transactions);
+
+    const categories = getCategoryTotals(transactions);
+    renderPie(categories);
+    renderCategoryTable(categories);
+
+    const monthly = getMonthlyCashFlow(transactions);
+    renderBarChart(monthly);
+    renderTrend(monthly);
+
+    renderEmptyStateIfNeeded(transactions);
+  }
+
+  async function refresh() {
+    try {
+      await loadExchangeRate();
+      await loadData();
+      render();
+    } catch (error) {
+      console.error("Analytics data load failed:", error);
+
+      const message =
+        error?.status === 401
+          ? "Your session has expired. Please sign in again."
+          : error?.message ||
+            "Could not load analytics data from the backend.";
+
+      ["pieLegendContainer", "barChartContainer", "trendChartContainer"].forEach(id => {
+        const element = $(id);
+        if (element) {
+          element.innerHTML =
+            `<p class="text-muted" style="font-size:13px;text-align:center;padding:24px;">${escapeHtml(message)}</p>`;
+        }
+      });
+    }
+  }
+
+  function setupControls() {
+    const period = $("chartsPeriodSelect");
+    if (period) {
+      currentPeriod = period.value || "all";
+      period.addEventListener("change", () => {
+        currentPeriod = period.value || "all";
+        render();
+      });
+    }
+
+    const expenseButton = $("toggleTypeExpense");
+    const incomeButton = $("toggleTypeIncome");
+
+    if (expenseButton) {
+      expenseButton.addEventListener("click", () => {
+        viewType = "expense";
+        expenseButton.classList.add("active");
+        incomeButton?.classList.remove("active");
+        render();
+      });
+    }
+
+    if (incomeButton) {
+      incomeButton.addEventListener("click", () => {
+        viewType = "income";
+        incomeButton.classList.add("active");
+        expenseButton?.classList.remove("active");
+        render();
+      });
+    }
+
+    const logout = $("headerLogoutBtn");
+    if (logout && typeof window.handleLogout === "function") {
+      logout.addEventListener("click", window.handleLogout);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    setUserDisplay();
+    setupControls();
+    await refresh();
+  });
 
   window.FinPulseCharts = {
-    refresh: refreshCharts,
-    refreshCharts,
-    getCurrentUser,
-    getCurrency,
-    formatMoney
+    refresh
   };
-
-  /* ==========================================================================
-     INITIALIZE
-     ========================================================================== */
-
-  document.addEventListener(
-    "DOMContentLoaded",
-    function () {
-      setupCurrencySelector();
-      refreshCharts();
-    }
-  );
-
 })();

@@ -320,8 +320,6 @@ document.addEventListener(
 
     setupBudgetControls();
 
-    setupQuickShortcuts();
-
     await refreshDashboard();
   }
 );
