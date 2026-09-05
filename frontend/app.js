@@ -1,4 +1,4 @@
-const API = localStorage.getItem("expense_api_url") || "http://127.0.0.1:8000";
+const API = localStorage.getItem("expense_api_url") || "https://personal-expense-tracker-1-dnqz.onrender.com";
 const TOKEN_KEY = "expense_access_token";
 const USER_KEY = "expense_user";
 
