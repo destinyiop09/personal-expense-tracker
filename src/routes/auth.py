@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.model import User
 from src.schema import UserCreate, UserLogin
-from src.security import hash_password, verify_password,create_access_token
+from src.security import hash_password, verify_password, create_access_token
+from src.dependencies import get_current_user
 
 router = APIRouter(
-    prefix = "/auth",
-    tags = ["Authentication"]
+    prefix="/auth",
+    tags=["Authentication"]
 )
+
 
 @router.post("/register")
 def register(
@@ -44,9 +46,10 @@ def register(
         "email": user.email
     }
 
+
 @router.post("/login")
-def login(user_data: UserLogin, db: Session=Depends(get_db)):
-    user= (
+def login(user_data: UserLogin, db: Session = Depends(get_db)):
+    user = (
         db.query(User)
         .filter(User.email == user_data.email)
         .first()
@@ -54,20 +57,26 @@ def login(user_data: UserLogin, db: Session=Depends(get_db)):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email "
+            detail="Invalid email"
         )
 
-    if not verify_password(
-        user_data.password, 
-        user.password_hash
-        ):
+    if not verify_password(user_data.password, user.password_hash):
         raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid password"
-                )
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password"
+        )
 
     access_token = create_access_token(user.id)
     return {
         "access_token": access_token,
         "token_type": "bearer"
+    }
+
+
+@router.get("/me")
+def me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email,
     }

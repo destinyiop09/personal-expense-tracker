@@ -1,20 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# ExpenseFlow Frontend
 
-# Run and deploy your AI Studio app
+A dependency-free frontend for the supplied FastAPI personal expense tracker.
 
-This contains everything you need to run your app locally.
+## What is included
 
-View your app in AI Studio: https://ai.studio/apps/44645b3b-818c-4f98-a31e-7f10962c8ea1
+- Animated login and registration screens
+- JWT authentication against `/auth/login`
+- Registration against `/auth/register`
+- Authenticated `/auth/me` profile lookup
+- Dashboard with balance, income and expense KPIs
+- Monthly spending line chart
+- Spending-by-category donut chart
+- Authenticated transaction listing/filtering
+- Add transaction flow wired to `POST /transactions/`
+- Delete transaction flow wired to `DELETE /transactions/{id}`
+- Responsive mobile navigation
+- Session expiry handling and logout
+- Backend error messages surfaced in the UI
 
-## Run Locally
+## Run
 
-**Prerequisites:**  Node.js
+1. Apply `backend_patch/src/routes/auth.py` to your backend (it adds `GET /auth/me`).
+2. Make sure your FastAPI server is running on `http://127.0.0.1:8000`.
+3. Serve this folder on an allowed CORS origin, for example:
 
+```bash
+python -m http.server 5173
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+4. Open `http://127.0.0.1:5173`.
+
+If your API is hosted elsewhere, set it before loading the app:
+
+```js
+localStorage.setItem("expense_api_url", "http://YOUR_HOST:8000");
+```
+
+Then reload.
+
+## Backend contract used
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me` (patch included)
+- `GET /categories/`
+- `GET /transactions/`
+- `POST /transactions/`
+- `DELETE /transactions/{id}`
+- `GET /summary/`
+- `GET /summary/categories`
+- `GET /summary/monthly`
+
+The frontend intentionally does not duplicate business rules: transaction validation and ownership remain enforced by the backend.
