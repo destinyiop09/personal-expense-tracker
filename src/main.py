@@ -1,19 +1,14 @@
+```python
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.database import Base, engine
-from src.model import User, Transaction, Category
-
-from src.routes.expenses import router as expenses_route
-from src.routes.auth import router as auth_route
-from src.routes.summary import router as summary_route
-from src.routes.categories import router as categories
+from src.routes.auth import router as auth_router
+from src.routes.categories import router as categories_router
+from src.routes.expenses import router as expenses_router
+from src.routes.summary import router as summary_router
 
 app = FastAPI()
 
-Base.metadata.create_all(bind=engine)
-
-# Allow the frontend to communicate with the backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -27,3 +22,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
+app.include_router(categories_router)
+app.include_router(expenses_router)
+app.include_router(summary_router)
+```
